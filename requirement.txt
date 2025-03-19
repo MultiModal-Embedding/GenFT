@@ -1,2 +1,4 @@
 vllm
 datasets
+sentence-transformers==3.4.1
+requests

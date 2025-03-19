@@ -1,6 +1,6 @@
 import json
 
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 
 
 def generate_datasets(generate_strategy, dataset_path, vllm, target_type, input_key):
@@ -36,3 +36,5 @@ def generate_datasets(generate_strategy, dataset_path, vllm, target_type, input_
                     except Exception as e:
                         print(f"生成失败，句子: {original_sentence[:30]}... 错误: {e}")
                         continue
+    new_dataset = Dataset.from_list(generated_pairs)
+    return new_dataset

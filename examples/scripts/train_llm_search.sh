@@ -1,0 +1,16 @@
+python3 train.py \
+  --pretrain_model_path gte \
+  --save_path /data01/zlz/checkpoint/gte-ft \
+  --run_name gte-ft \
+  --num_train_epochs 1 \
+  --per_device_train_batch_size 16 \
+  --per_device_eval_batch_size 16 \
+  --warmup_ratio 0.1 \
+  --fp16 \
+  --api_model gpt-4o \
+  --api_url \
+  --api_key \
+  --dataset_path dataset \
+  --generate_strategy llm_search \
+  --target_type a_b_score \
+  --input_key doc

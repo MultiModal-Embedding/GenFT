@@ -1,0 +1,15 @@
+python3 train.py \
+  --pretrain_model_path /data0/zlz/GenFT/models/gte-base-zh \
+  --save_path /data0/zlz/checkpoint/gte-ft \
+  --run_name gte-ft \
+  --num_train_epochs 1 \
+  --per_device_train_batch_size 16 \
+  --per_device_eval_batch_size 16 \
+  --warmup_ratio 0.1 \
+  --api_model DeepSeek-V3 \
+  --api_url https://maas-cn-southwest-2.modelarts-maas.com/v1/infers/271c9332-4aa6-4ff5-95b3-0cf8bd94c394/v1/chat/completions \
+  --api_key _GQLPtKEzmVzslOtpRwmYdoyU_sCjZMFBx5bCJ4AosVfGqWMpURvTCtBkQOgs4AT2g1i2Akgv_WIyKoHUTEaGg \
+  --dataset_path /data0/zlz/doc_dataset/offline_test_dataset \
+  --generate_strategy llm_search \
+  --target_type a_b_score \
+  --input_key doc

@@ -12,9 +12,9 @@ from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
 def sentence_transformer_train(args, dataset):
     model = SentenceTransformer(args.pretrain_model_path)
 
-    train_dataset = dataset["train"].select(range(100_000))
-    eval_dataset = dataset["dev"]
-    test_dataset = dataset["test"]
+    train_test_split = dataset.train_test_split(test_size=0.2, seed=42)
+    train_dataset = train_test_split['train']
+    eval_dataset = train_test_split['test']
 
     # Inputs,Labels,Appropriate Loss Functions
     # "(sentence_A, sentence_B) pairs",class,SoftmaxLoss
@@ -26,9 +26,9 @@ def sentence_transformer_train(args, dataset):
     if args.target_type == "a_b_score":
         train_loss = losses.CosineSimilarityLoss(model=model)
         dev_evaluator = EmbeddingSimilarityEvaluator(
-            sentences1=eval_dataset["sentence_A"],
-            sentences2=eval_dataset["sentence_B"],
-            scores=eval_dataset["similarity_score"],
+            sentences1=eval_dataset["sentence1"],
+            sentences2=eval_dataset["sentence2"],
+            scores=eval_dataset["score"],
             name=f"{args.run_name}_dev"
         )
         dev_evaluator(model)
@@ -82,12 +82,12 @@ def sentence_transformer_train(args, dataset):
         )
     trainer.train()
 
-    test_evaluator = EmbeddingSimilarityEvaluator(
-        sentences1=test_dataset["sentence_A"],
-        sentences2=test_dataset["sentence_B"],
-        scores=test_dataset["similarity_score"],
-        name=f"{args.run_name}_test"
-    )
-    test_evaluator(model)
+    # test_evaluator = EmbeddingSimilarityEvaluator(
+    #     sentences1=test_dataset["sentence_A"],
+    #     sentences2=test_dataset["sentence_B"],
+    #     scores=test_dataset["similarity_score"],
+    #     name=f"{args.run_name}_test"
+    # )
+    # test_evaluator(model)
 
     model.save_pretrained(args.save_path)

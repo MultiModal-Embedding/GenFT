@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # SentenceTransformer
     parser.add_argument("--pretrain_model_path", type=str,
                         default="all-MiniLM-L6-v2")
-    parser.add_argument("--save_path", type=str, default="./ckpt")
+    parser.add_argument("--model_save_path", type=str, default="./ckpt")
     parser.add_argument("--run_name", type=str, default="GenFT")
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument("--per_device_train_batch_size", type=int, default=16)
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_key", type=str, default="doc")
     parser.add_argument("--load_generated", action="store_true")
     parser.add_argument("--save_generated", action="store_true")
-    parser.add_argument("--save_path", type=str, default=None)
+    parser.add_argument("--dataset_save_path", type=str, default=None)
 
     args = parser.parse_args()
 

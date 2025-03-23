@@ -3,6 +3,8 @@ import os
 import json
 import random
 import time
+import concurrent.futures
+import jieba
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -34,7 +36,7 @@ def sample_dataset(dataset, sample_ratio=0.1, seed=42):
     return dataset.select(indices)
 
 
-def llm_search_strategy(original_sentence, similarity_scores, vllm):
+def llm_search_strategy(original_sentence, similarity_scores, vllm, max_retries=5):
     prompt = [
         {
             "role": "system",
@@ -56,42 +58,57 @@ def llm_search_strategy(original_sentence, similarity_scores, vllm):
         }
     ]
 
-    try:
-        response = vllm.generate(prompt)
-        response = json.loads(response.text)[
-            'choices'][0]['message']['content']
+    retries = 0
+    while retries < max_retries:
+        try:
+            response = vllm.generate(prompt)
+            response = json.loads(response.text)[
+                'choices'][0]['message']['content']
 
-        if '```json' in response:
-            response = response.split('```json')[-1].split('```')[0]
+            if '```json' in response:
+                response = response.split('```json')[-1].split('```')[0]
 
-        results = json.loads(response)
-        generated_pairs = []
-        for result in results:
-            generated_sentence = result.get("generated_sentence", "").strip()
-            similarity = result.get("similarity", 0.0)
-            generated_pairs.append({
-                "sentence1": original_sentence,
-                "sentence2": generated_sentence,
-                "score": similarity
-            })
-        return generated_pairs
-    except Exception as e:
-        print(
-            f"生成失败，句子: {original_sentence[:30]}... 错误: {e} response: {response}")
-        return []
+            results = json.loads(response)
+            generated_pairs = []
+            for result in results:
+                generated_sentence = result.get(
+                    "generated_sentence", "").strip()
+                similarity = result.get("similarity", 0.0)
+
+                if generated_sentence:
+                    generated_pairs.append({
+                        "sentence1": original_sentence,
+                        "sentence2": generated_sentence,
+                        "score": similarity
+                    })
+                else:
+                    raise ValueError("生成的句子为空")
+
+            return generated_pairs
+
+        except Exception as e:
+            retries += 1
+            print(
+                f"生成失败，句子: {original_sentence[:30]}... 错误: {e}，重试次数: {retries}/{max_retries}")
+            if retries >= max_retries:
+                print(f"达到最大重试次数，跳过该句子: {original_sentence[:30]}...")
+
+    return []
 
 
-def mask_and_complete_strategy(original_sentence, similarity_scores, vllm):
+def mask_and_complete_strategy(original_sentence, similarity_scores, vllm, max_retries=5):
     def mask_tokens(sentence, similarity):
-        tokens = sentence.split()
+        tokens = list(jieba.cut(sentence))
         num_tokens = len(tokens)
 
         mask_ratio = 1.0 - similarity
         num_to_mask = max(1, min(int(num_tokens * mask_ratio), num_tokens - 1))
         mask_indices = random.sample(range(num_tokens), num_to_mask)
 
-        masked_sentence = " ".join(
-            ["[MASK]" if i in mask_indices else token for i, token in enumerate(tokens)])
+        masked_sentence = "".join(
+            ["[MASK]" if i in mask_indices else token for i,
+                token in enumerate(tokens)]
+        )
         return masked_sentence
 
     generated_pairs = []
@@ -113,26 +130,39 @@ def mask_and_complete_strategy(original_sentence, similarity_scores, vllm):
             }
         ]
 
-        try:
-            response = vllm.generate(prompt)
-            response = json.loads(response.text)[
-                'choices'][0]['message']['content']
+        retries = 0
+        while retries < max_retries:
+            try:
+                response = vllm.generate(prompt)
+                response = json.loads(response.text)[
+                    'choices'][0]['message']['content']
 
-            if '```json' in response:
-                response = response.split('```json')[-1].split('```')[0]
+                if '```json' in response:
+                    response = response.split('```json')[-1].split('```')[0]
 
-            result = json.loads(response)
-            generated_sentence = result.get("generated_sentence", "").strip()
-            similarity = result.get("similarity", 0.0)
-            generated_pairs.append({
-                "sentence1": original_sentence,
-                "sentence2": generated_sentence,
-                "score": similarity
-            })
-        except Exception as e:
-            print(
-                f"生成失败，句子: {original_sentence[:30]}... 错误: {e} response: {response}")
-            continue
+                result = json.loads(response)
+                generated_sentence = result.get(
+                    "generated_sentence", "").strip()
+                generated_sentence.replace(" ", "")
+                similarity = result.get("similarity", 0.0)
+
+                if generated_sentence:
+                    generated_pairs.append({
+                        "sentence1": original_sentence,
+                        "sentence2": generated_sentence,
+                        "score": similarity
+                    })
+                    break
+                else:
+                    raise ValueError("生成的句子为空")
+
+            except Exception as e:
+                retries += 1
+                print(
+                    f"生成失败，句子: {original_sentence[:30]}... 错误: {e}，重试次数: {retries}/{max_retries}")
+                if retries >= max_retries:
+                    print(f"达到最大重试次数，跳过该句子: {original_sentence[:30]}...")
+
     return generated_pairs
 
 
@@ -149,7 +179,7 @@ def generate_datasets(args, vllm):
     input_key = args.input_key
     load_generated = args.load_generated
     save_generated = args.save_generated
-    save_path = args.save_path
+    save_path = args.dataset_save_path
 
     if load_generated and save_path and os.path.exists(save_path):
         print(f"加载已生成的数据集: {save_path}")
@@ -166,19 +196,33 @@ def generate_datasets(args, vllm):
 
     generated_pairs = []
     if target_type == "a_b_score":
-        similarity_scores = [0.1, 0.2, 0.3,
-                             0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
-        for item in dataset:
-            original_sentence = item.get(input_key, "").strip()
-            if not original_sentence:
-                continue
+        similarity_scores = [0.1, 0.3, 0.5, 0.7, 0.9]
 
-            strategy_func = STRATEGIES.get(generate_strategy)
-            if not strategy_func:
-                raise ValueError(f"未知策略: {generate_strategy}")
+        strategy_func = STRATEGIES.get(generate_strategy)
+        if not strategy_func:
+            raise ValueError(f"未知策略: {generate_strategy}")
 
-            results = strategy_func(original_sentence, similarity_scores, vllm)
-            generated_pairs.extend(results)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = []
+            for item in dataset:
+                original_sentence = item.get(input_key, "").strip()
+                if not original_sentence:
+                    continue
+
+                future = executor.submit(
+                    strategy_func,
+                    original_sentence,
+                    similarity_scores,
+                    vllm
+                )
+                futures.append(future)
+
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    results = future.result()
+                    generated_pairs.extend(results)
+                except Exception as e:
+                    print(f"生成失败: {e}")
 
     new_dataset = Dataset.from_list(generated_pairs)
 

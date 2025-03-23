@@ -45,7 +45,7 @@ def sentence_transformer_train(args, dataset):
 
     train_args = SentenceTransformerTrainingArguments(
         # Required parameter:
-        output_dir=args.save_path,
+        output_dir=args.model_save_path,
         # Optional training parameters:
         num_train_epochs=args.num_train_epochs,
         per_device_train_batch_size=args.per_device_train_batch_size,
@@ -90,4 +90,4 @@ def sentence_transformer_train(args, dataset):
     # )
     # test_evaluator(model)
 
-    model.save_pretrained(args.save_path)
+    model.save_pretrained(args.model_save_path)
